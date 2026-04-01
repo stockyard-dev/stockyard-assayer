@@ -1,0 +1,10 @@
+package store
+import("database/sql";"fmt";"os";"path/filepath";"time";_ "modernc.org/sqlite")
+type DB struct{*sql.DB}
+type RevenueEntry struct{ID int64 `json:"id"`;MRRCents int64 `json:"mrr_cents"`;CustomerCount int `json:"customer_count"`;ChurnedCount int `json:"churned_count"`;NewCount int `json:"new_count"`;Period string `json:"period"`;Notes string `json:"notes"`;RecordedAt time.Time `json:"recorded_at"`}
+func Open(d string)(*DB,error){os.MkdirAll(d,0755);dsn:=filepath.Join(d,"assayer.db")+"?_journal_mode=WAL&_busy_timeout=5000";db,err:=sql.Open("sqlite",dsn);if err!=nil{return nil,fmt.Errorf("open: %w",err)};db.SetMaxOpenConns(1);migrate(db);return &DB{db},nil}
+func migrate(db *sql.DB){db.Exec(`CREATE TABLE IF NOT EXISTS revenue(id INTEGER PRIMARY KEY AUTOINCREMENT,mrr_cents INTEGER NOT NULL,customer_count INTEGER DEFAULT 0,churned_count INTEGER DEFAULT 0,new_count INTEGER DEFAULT 0,period TEXT NOT NULL,notes TEXT DEFAULT '',recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP)`)}
+func(db *DB)Record(e *RevenueEntry)error{res,err:=db.Exec(`INSERT INTO revenue(mrr_cents,customer_count,churned_count,new_count,period,notes)VALUES(?,?,?,?,?,?)`,e.MRRCents,e.CustomerCount,e.ChurnedCount,e.NewCount,e.Period,e.Notes);if err!=nil{return err};e.ID,_=res.LastInsertId();return nil}
+func(db *DB)List()([]RevenueEntry,error){rows,_:=db.Query(`SELECT id,mrr_cents,customer_count,churned_count,new_count,period,notes,recorded_at FROM revenue ORDER BY period DESC LIMIT 36`);defer rows.Close();var out[]RevenueEntry;for rows.Next(){var e RevenueEntry;rows.Scan(&e.ID,&e.MRRCents,&e.CustomerCount,&e.ChurnedCount,&e.NewCount,&e.Period,&e.Notes,&e.RecordedAt);out=append(out,e)};return out,nil}
+func(db *DB)Delete(id int64){db.Exec(`DELETE FROM revenue WHERE id=?`,id)}
+func(db *DB)Stats()(map[string]interface{},error){var mrr int64;var customers int;db.QueryRow(`SELECT mrr_cents,customer_count FROM revenue ORDER BY period DESC LIMIT 1`).Scan(&mrr,&customers);return map[string]interface{}{"current_mrr_cents":mrr,"current_customers":customers},nil}
