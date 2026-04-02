@@ -21,5 +21,26 @@ func now()string{return time.Now().UTC().Format(time.RFC3339)}
 func(d *DB)Create(e *Subscription)error{e.ID=genID();e.CreatedAt=now();_,err:=d.db.Exec(`INSERT INTO subscriptions(id,customer_name,plan,mrr,status,start_date,renewal_date,notes,created_at)VALUES(?,?,?,?,?,?,?,?,?)`,e.ID,e.CustomerName,e.Plan,e.MRR,e.Status,e.StartDate,e.RenewalDate,e.Notes,e.CreatedAt);return err}
 func(d *DB)Get(id string)*Subscription{var e Subscription;if d.db.QueryRow(`SELECT id,customer_name,plan,mrr,status,start_date,renewal_date,notes,created_at FROM subscriptions WHERE id=?`,id).Scan(&e.ID,&e.CustomerName,&e.Plan,&e.MRR,&e.Status,&e.StartDate,&e.RenewalDate,&e.Notes,&e.CreatedAt)!=nil{return nil};return &e}
 func(d *DB)List()[]Subscription{rows,_:=d.db.Query(`SELECT id,customer_name,plan,mrr,status,start_date,renewal_date,notes,created_at FROM subscriptions ORDER BY created_at DESC`);if rows==nil{return nil};defer rows.Close();var o []Subscription;for rows.Next(){var e Subscription;rows.Scan(&e.ID,&e.CustomerName,&e.Plan,&e.MRR,&e.Status,&e.StartDate,&e.RenewalDate,&e.Notes,&e.CreatedAt);o=append(o,e)};return o}
+func(d *DB)Update(e *Subscription)error{_,err:=d.db.Exec(`UPDATE subscriptions SET customer_name=?,plan=?,mrr=?,status=?,start_date=?,renewal_date=?,notes=? WHERE id=?`,e.CustomerName,e.Plan,e.MRR,e.Status,e.StartDate,e.RenewalDate,e.Notes,e.ID);return err}
 func(d *DB)Delete(id string)error{_,err:=d.db.Exec(`DELETE FROM subscriptions WHERE id=?`,id);return err}
 func(d *DB)Count()int{var n int;d.db.QueryRow(`SELECT COUNT(*) FROM subscriptions`).Scan(&n);return n}
+
+func(d *DB)Search(q string, filters map[string]string)[]Subscription{
+    where:="1=1"
+    args:=[]any{}
+    if q!=""{
+        where+=" AND (customer_name LIKE ?)"
+        args=append(args,"%"+q+"%");
+    }
+    if v,ok:=filters["status"];ok&&v!=""{where+=" AND status=?";args=append(args,v)}
+    rows,_:=d.db.Query(`SELECT id,customer_name,plan,mrr,status,start_date,renewal_date,notes,created_at FROM subscriptions WHERE `+where+` ORDER BY created_at DESC`,args...)
+    if rows==nil{return nil};defer rows.Close()
+    var o []Subscription;for rows.Next(){var e Subscription;rows.Scan(&e.ID,&e.CustomerName,&e.Plan,&e.MRR,&e.Status,&e.StartDate,&e.RenewalDate,&e.Notes,&e.CreatedAt);o=append(o,e)};return o
+}
+
+func(d *DB)Stats()map[string]any{
+    m:=map[string]any{"total":d.Count()}
+    rows,_:=d.db.Query(`SELECT status,COUNT(*) FROM subscriptions GROUP BY status`)
+    if rows!=nil{defer rows.Close();by:=map[string]int{};for rows.Next(){var s string;var c int;rows.Scan(&s,&c);by[s]=c};m["by_status"]=by}
+    return m
+}
